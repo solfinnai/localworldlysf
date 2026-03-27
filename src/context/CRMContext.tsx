@@ -10,6 +10,7 @@ import {
   sampleAdPlacements,
   INTERVIEW_QUESTIONS 
 } from '@/data/crm-data';
+import { isSupabaseConfigured, db } from '@/lib/db';
 
 interface CRMContextType {
   businesses: Business[];
@@ -69,51 +70,74 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    const storedBusinesses = localStorage.getItem('crm_businesses');
-    const storedInterviews = localStorage.getItem('crm_interviews');
-    const storedOutreach = localStorage.getItem('crm_outreach');
-    const storedSponsorships = localStorage.getItem('crm_sponsorships');
-    const storedAds = localStorage.getItem('crm_adPlacements');
-    
-    setBusinesses(storedBusinesses ? JSON.parse(storedBusinesses) : sampleBusinesses);
-    setInterviews(storedInterviews ? JSON.parse(storedInterviews) : sampleInterviews);
-    setOutreach(storedOutreach ? JSON.parse(storedOutreach) : sampleOutreach);
-    setSponsorships(storedSponsorships ? JSON.parse(storedSponsorships) : sampleSponsorships);
-    setAdPlacements(storedAds ? JSON.parse(storedAds) : sampleAdPlacements);
-    setIsHydrated(true);
+    async function loadData() {
+      if (isSupabaseConfigured) {
+        const [dbBusinesses, dbInterviews, dbOutreach, dbSponsorships, dbAds] = await Promise.all([
+          db.businesses.getAll(),
+          db.interviews.getAll(),
+          db.outreach.getAll(),
+          db.sponsorships.getAll(),
+          db.adPlacements.getAll(),
+        ]);
+        if (dbBusinesses.length > 0) setBusinesses(dbBusinesses);
+        else setBusinesses(sampleBusinesses);
+        if (dbInterviews.length > 0) setInterviews(dbInterviews);
+        else setInterviews(sampleInterviews);
+        if (dbOutreach.length > 0) setOutreach(dbOutreach);
+        else setOutreach(sampleOutreach);
+        if (dbSponsorships.length > 0) setSponsorships(dbSponsorships);
+        else setSponsorships(sampleSponsorships);
+        if (dbAds.length > 0) setAdPlacements(dbAds);
+        else setAdPlacements(sampleAdPlacements);
+      } else {
+        const storedBusinesses = localStorage.getItem('crm_businesses');
+        const storedInterviews = localStorage.getItem('crm_interviews');
+        const storedOutreach = localStorage.getItem('crm_outreach');
+        const storedSponsorships = localStorage.getItem('crm_sponsorships');
+        const storedAds = localStorage.getItem('crm_adPlacements');
+        
+        setBusinesses(storedBusinesses ? JSON.parse(storedBusinesses) : sampleBusinesses);
+        setInterviews(storedInterviews ? JSON.parse(storedInterviews) : sampleInterviews);
+        setOutreach(storedOutreach ? JSON.parse(storedOutreach) : sampleOutreach);
+        setSponsorships(storedSponsorships ? JSON.parse(storedSponsorships) : sampleSponsorships);
+        setAdPlacements(storedAds ? JSON.parse(storedAds) : sampleAdPlacements);
+      }
+      setIsHydrated(true);
+    }
+    loadData();
   }, []);
 
   useEffect(() => {
-    if (isHydrated) {
+    if (isHydrated && !isSupabaseConfigured) {
       localStorage.setItem('crm_businesses', JSON.stringify(businesses));
     }
   }, [businesses, isHydrated]);
 
   useEffect(() => {
-    if (isHydrated) {
+    if (isHydrated && !isSupabaseConfigured) {
       localStorage.setItem('crm_interviews', JSON.stringify(interviews));
     }
   }, [interviews, isHydrated]);
 
   useEffect(() => {
-    if (isHydrated) {
+    if (isHydrated && !isSupabaseConfigured) {
       localStorage.setItem('crm_outreach', JSON.stringify(outreach));
     }
   }, [outreach, isHydrated]);
 
   useEffect(() => {
-    if (isHydrated) {
+    if (isHydrated && !isSupabaseConfigured) {
       localStorage.setItem('crm_sponsorships', JSON.stringify(sponsorships));
     }
   }, [sponsorships, isHydrated]);
 
   useEffect(() => {
-    if (isHydrated) {
+    if (isHydrated && !isSupabaseConfigured) {
       localStorage.setItem('crm_adPlacements', JSON.stringify(adPlacements));
     }
   }, [adPlacements, isHydrated]);
 
-  const addBusiness = (business: Omit<Business, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addBusiness = async (business: Omit<Business, 'id' | 'createdAt' | 'updatedAt'>) => {
     const newBusiness: Business = {
       ...business,
       id: generateId('biz'),
@@ -121,19 +145,28 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       updatedAt: getToday(),
     };
     setBusinesses(prev => [...prev, newBusiness]);
+    if (isSupabaseConfigured) {
+      await db.businesses.create(business);
+    }
   };
 
-  const updateBusiness = (id: string, updates: Partial<Business>) => {
+  const updateBusiness = async (id: string, updates: Partial<Business>) => {
     setBusinesses(prev => prev.map(b => 
       b.id === id ? { ...b, ...updates, updatedAt: getToday() } : b
     ));
+    if (isSupabaseConfigured) {
+      await db.businesses.update(id, updates);
+    }
   };
 
-  const deleteBusiness = (id: string) => {
+  const deleteBusiness = async (id: string) => {
     setBusinesses(prev => prev.filter(b => b.id !== id));
+    if (isSupabaseConfigured) {
+      await db.businesses.delete(id);
+    }
   };
 
-  const addInterview = (interview: Omit<InterviewResponse, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addInterview = async (interview: Omit<InterviewResponse, 'id' | 'createdAt' | 'updatedAt'>) => {
     const newInterview: InterviewResponse = {
       ...interview,
       id: generateId('int'),
@@ -141,42 +174,51 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       updatedAt: getToday(),
     };
     setInterviews(prev => [...prev, newInterview]);
+    if (isSupabaseConfigured) {
+      await db.interviews.create(interview);
+    }
   };
 
-  const updateInterview = (id: string, updates: Partial<InterviewResponse>) => {
+  const updateInterview = async (id: string, updates: Partial<InterviewResponse>) => {
     setInterviews(prev => prev.map(i => 
       i.id === id ? { ...i, ...updates, updatedAt: getToday() } : i
     ));
   };
 
-  const approveInterview = (id: string) => {
+  const approveInterview = async (id: string) => {
     setInterviews(prev => prev.map(i => 
       i.id === id ? { ...i, status: 'approved', approvedAt: getToday(), updatedAt: getToday() } : i
     ));
+    if (isSupabaseConfigured) {
+      await db.interviews.updateStatus(id, 'approved');
+    }
   };
 
-  const rejectInterview = (id: string) => {
+  const rejectInterview = async (id: string) => {
     setInterviews(prev => prev.map(i => 
       i.id === id ? { ...i, status: 'rejected', updatedAt: getToday() } : i
     ));
   };
 
-  const addOutreach = (newOutreach: Omit<Outreach, 'id' | 'createdAt'>) => {
+  const addOutreach = async (newOutreach: Omit<Outreach, 'id' | 'createdAt'>) => {
     const outreach: Outreach = {
       ...newOutreach,
       id: generateId('out'),
       createdAt: getToday(),
     };
     setOutreach(prev => [...prev, outreach]);
+    if (isSupabaseConfigured) {
+      await db.outreach.create(newOutreach);
+    }
   };
 
-  const updateOutreach = (id: string, updates: Partial<Outreach>) => {
+  const updateOutreach = async (id: string, updates: Partial<Outreach>) => {
     setOutreach(prev => prev.map(o => 
       o.id === id ? { ...o, ...updates } : o
     ));
   };
 
-  const addSponsorship = (sponsorship: Omit<Sponsorship, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addSponsorship = async (sponsorship: Omit<Sponsorship, 'id' | 'createdAt' | 'updatedAt'>) => {
     const newSponsorship: Sponsorship = {
       ...sponsorship,
       id: generateId('spon'),
