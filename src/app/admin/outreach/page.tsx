@@ -2,10 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { sampleOutreach, sampleBusinesses, INTERVIEW_QUESTIONS } from '@/data/crm-data';
+import { sampleOutreach, sampleBusinesses, sampleInterviews, INTERVIEW_QUESTIONS } from '@/data/crm-data';
+import { InterviewResponse } from '@/lib/crm-types';
+import { InterviewResponseCard, InterviewResponseViewer } from '@/components/admin/InterviewResponseCard';
 
 export default function OutreachPage() {
   const [selectedChannel, setSelectedChannel] = useState<string>('all');
+  const [selectedInterview, setSelectedInterview] = useState<InterviewResponse | null>(null);
   
   const getBusiness = (id: string) => sampleBusinesses.find(b => b.id === id);
   
@@ -41,8 +44,20 @@ export default function OutreachPage() {
     ? sampleOutreach 
     : sampleOutreach.filter(o => o.channel === selectedChannel);
 
+  const pendingInterviews = sampleInterviews.filter(i => i.status === 'received' || i.status === 'pending');
+
   return (
     <div>
+      {selectedInterview && (
+        <InterviewResponseViewer
+          interview={selectedInterview}
+          businessName={getBusiness(sampleInterviews.find(i => i.id === selectedInterview.id)?.businessId || '')?.name || 'Unknown'}
+          onClose={() => setSelectedInterview(null)}
+          onApprove={(id) => console.log('Approve', id)}
+          onReject={(id) => console.log('Reject', id)}
+        />
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-primary font-display">Outreach & Interviews</h1>
@@ -85,6 +100,25 @@ export default function OutreachPage() {
           </p>
         </div>
       </div>
+
+      {/* Received Interviews */}
+      {pendingInterviews.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-bold text-primary mb-4 flex items-center gap-2">
+            <span>📥</span> Received Interview Responses ({pendingInterviews.length})
+          </h2>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {pendingInterviews.map((interview) => (
+              <InterviewResponseCard
+                key={interview.id}
+                interview={interview}
+                businessName={getBusiness(interview.businessId)?.name || 'Unknown'}
+                onViewDetails={setSelectedInterview}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       
       {/* Outreach Campaigns */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
