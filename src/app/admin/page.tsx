@@ -1,21 +1,27 @@
+'use client';
+
 import Link from 'next/link';
-import { sampleBusinesses, sampleInterviews, sampleSponsorships, sampleOutreach } from '@/data/crm-data';
+import { useCRM } from '@/context/CRMContext';
 
 export default function AdminDashboard() {
+  const { businesses, sponsorships, outreach, interviews } = useCRM();
+  
   const stats = {
-    totalBusinesses: sampleBusinesses.length,
-    byStatus: sampleBusinesses.reduce((acc, b) => {
+    totalBusinesses: businesses.length,
+    byStatus: businesses.reduce((acc, b) => {
       acc[b.status] = (acc[b.status] || 0) + 1;
       return acc;
     }, {} as Record<string, number>),
-    pendingInterviews: sampleInterviews.filter(i => i.status === 'received').length,
-    activeSponsors: sampleSponsorships.filter(s => s.status === 'active').length,
-    monthlyRevenue: sampleSponsorships
+    pendingInterviews: interviews.filter(i => i.status === 'received' || i.status === 'pending').length,
+    activeSponsors: sponsorships.filter(s => s.status === 'active').length,
+    monthlyRevenue: sponsorships
       .filter(s => s.status === 'active')
       .reduce((sum, s) => sum + s.price, 0),
-    totalOutreach: sampleOutreach.length,
-    sentOutreach: sampleOutreach.filter(o => o.status === 'sent' || o.status === 'opened' || o.status === 'replied').length,
-    replyRate: sampleOutreach.filter(o => o.repliedAt).length / sampleOutreach.length * 100,
+    totalOutreach: outreach.length,
+    sentOutreach: outreach.filter(o => o.status === 'sent' || o.status === 'opened' || o.status === 'replied').length,
+    replyRate: outreach.length > 0 
+      ? (outreach.filter(o => o.repliedAt).length / outreach.length * 100) 
+      : 0,
   };
 
   const recentActivity = [
@@ -99,13 +105,16 @@ export default function AdminDashboard() {
                     <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-primary rounded-full"
-                        style={{ width: `${(count / stats.totalBusinesses) * 100}%` }}
+                        style={{ width: `${stats.totalBusinesses > 0 ? (count / stats.totalBusinesses) * 100 : 0}%` }}
                       />
                     </div>
                   </div>
                   <span className="text-sm font-medium text-gray-600 ml-4">{count}</span>
                 </div>
               ))}
+              {Object.keys(stats.byStatus).length === 0 && (
+                <p className="text-gray-400 text-center py-4">No businesses yet</p>
+              )}
             </div>
           </div>
         </div>
@@ -129,25 +138,25 @@ export default function AdminDashboard() {
       {/* Quick Actions */}
       <div className="mt-8 grid md:grid-cols-4 gap-4">
         <QuickAction
-          href="/admin/businesses?action=new"
+          href="/admin/businesses/new"
           icon="➕"
           label="Add Business"
           description="Add a new business to the pipeline"
         />
         <QuickAction
-          href="/admin/outreach?action=new"
+          href="/admin/outreach/new"
           icon="📧"
           label="Start Outreach"
           description="Send interview invitations"
         />
         <QuickAction
-          href="/admin/articles?action=new"
+          href="/admin/articles/new"
           icon="📝"
           label="Write Article"
           description="Create a new spotlight article"
         />
         <QuickAction
-          href="/admin/sponsorships?action=new"
+          href="/admin/sponsorships"
           icon="💰"
           label="New Sponsor"
           description="Add a sponsorship package"

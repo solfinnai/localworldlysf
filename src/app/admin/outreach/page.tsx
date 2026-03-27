@@ -2,15 +2,16 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { sampleOutreach, sampleBusinesses, sampleInterviews, INTERVIEW_QUESTIONS } from '@/data/crm-data';
+import { useCRM } from '@/context/CRMContext';
 import { InterviewResponse } from '@/lib/crm-types';
 import { InterviewResponseCard, InterviewResponseViewer } from '@/components/admin/InterviewResponseCard';
 
 export default function OutreachPage() {
+  const { businesses, interviews, outreach, approveInterview, rejectInterview } = useCRM();
   const [selectedChannel, setSelectedChannel] = useState<string>('all');
   const [selectedInterview, setSelectedInterview] = useState<InterviewResponse | null>(null);
   
-  const getBusiness = (id: string) => sampleBusinesses.find(b => b.id === id);
+  const getBusiness = (id: string) => businesses.find(b => b.id === id);
   
   const getStatusIcon = (status: string) => {
     const icons: Record<string, string> = {
@@ -41,20 +42,30 @@ export default function OutreachPage() {
   };
 
   const filteredOutreach = selectedChannel === 'all' 
-    ? sampleOutreach 
-    : sampleOutreach.filter(o => o.channel === selectedChannel);
+    ? outreach 
+    : outreach.filter(o => o.channel === selectedChannel);
 
-  const pendingInterviews = sampleInterviews.filter(i => i.status === 'received' || i.status === 'pending');
+  const pendingInterviews = interviews.filter(i => i.status === 'received' || i.status === 'pending');
+
+  const handleApprove = (id: string) => {
+    approveInterview(id);
+    setSelectedInterview(null);
+  };
+
+  const handleReject = (id: string) => {
+    rejectInterview(id);
+    setSelectedInterview(null);
+  };
 
   return (
     <div>
       {selectedInterview && (
         <InterviewResponseViewer
           interview={selectedInterview}
-          businessName={getBusiness(sampleInterviews.find(i => i.id === selectedInterview.id)?.businessId || '')?.name || 'Unknown'}
+          businessName={getBusiness(interviews.find(i => i.id === selectedInterview.id)?.businessId || '')?.name || 'Unknown'}
           onClose={() => setSelectedInterview(null)}
-          onApprove={(id) => console.log('Approve', id)}
-          onReject={(id) => console.log('Reject', id)}
+          onApprove={handleApprove}
+          onReject={handleReject}
         />
       )}
 
@@ -78,7 +89,13 @@ export default function OutreachPage() {
           <span>🎤</span> Your 5 Interview Questions
         </h2>
         <div className="space-y-4">
-          {Object.entries(INTERVIEW_QUESTIONS).map(([key, q], i) => (
+          {Object.entries({
+            q1: { question: "Tell me about yourself and how [Business Name] came to be.", prompt: "Establishes founder's story and business origin." },
+            q2: { question: "What makes [Business Name] different from other places in San Francisco?", prompt: "Identifies unique value proposition." },
+            q3: { question: "What's the most memorable moment you've had with a customer?", prompt: "Humanizes through emotional storytelling." },
+            q4: { question: "What do you want people to know about [neighborhood]?", prompt: "Ties business to community." },
+            q5: { question: "What should first-timers absolutely try/do?", prompt: "Actionable advice that drives conversions." },
+          }).map(([key, q], i) => (
             <div key={key} className="bg-gray-50 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <span className="w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">
@@ -95,8 +112,7 @@ export default function OutreachPage() {
         <div className="mt-4 p-4 bg-accent/10 rounded-lg border border-accent/20">
           <p className="text-sm text-gray-700">
             <strong className="text-accent">Pro tip:</strong> These questions are designed to extract compelling narratives 
-            that drive engagement. Q1 establishes authenticity, Q2 highlights uniqueness, Q3 creates emotional connection, 
-            Q4 builds community ties, and Q5 drives action.
+            that drive engagement.
           </p>
         </div>
       </div>
@@ -124,7 +140,7 @@ export default function OutreachPage() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-6 border-b border-gray-100">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <h2 className="text-lg font-bold text-primary">Campaign History</h2>
+            <h2 className="text-lg font-bold text-primary">Campaign History ({outreach.length})</h2>
             <div className="flex gap-2">
               {['all', 'email', 'instagram', 'facebook'].map((channel) => (
                 <button
@@ -144,48 +160,41 @@ export default function OutreachPage() {
         </div>
         
         <div className="divide-y divide-gray-100">
-          {filteredOutreach.map((outreach) => {
-            const business = getBusiness(outreach.businessId);
+          {filteredOutreach.map((out) => {
+            const business = getBusiness(out.businessId);
             return (
-              <div key={outreach.id} className="p-6 hover:bg-gray-50 transition-colors">
+              <div key={out.id} className="p-6 hover:bg-gray-50 transition-colors">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-xl">
-                      {outreach.channel === 'email' ? '📧' : 
-                       outreach.channel === 'instagram' ? '📸' : '📘'}
+                      {out.channel === 'email' ? '📧' : 
+                       out.channel === 'instagram' ? '📸' : '📘'}
                     </div>
                     <div>
-                      <p className="font-medium text-primary">{business?.name}</p>
-                      <p className="text-sm text-gray-500 capitalize">{outreach.channel}</p>
+                      <p className="font-medium text-primary">{business?.name || 'Unknown Business'}</p>
+                      <p className="text-sm text-gray-500 capitalize">{out.channel}</p>
                     </div>
                   </div>
                   
                   <div className="flex items-center gap-4">
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${getStatusColor(outreach.status)}`}>
-                      <span>{getStatusIcon(outreach.status)}</span>
-                      <span className="capitalize">{outreach.status}</span>
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${getStatusColor(out.status)}`}>
+                      <span>{getStatusIcon(out.status)}</span>
+                      <span className="capitalize">{out.status}</span>
                     </span>
                     
-                    {outreach.sentAt && (
+                    {out.sentAt && (
                       <div className="text-right text-sm">
                         <p className="text-gray-500">Sent</p>
-                        <p className="text-gray-700">{new Date(outreach.sentAt).toLocaleDateString()}</p>
+                        <p className="text-gray-700">{new Date(out.sentAt).toLocaleDateString()}</p>
                       </div>
                     )}
                     
-                    {outreach.openedAt && (
+                    {out.openedAt && (
                       <div className="text-right text-sm">
                         <p className="text-gray-500">Opened</p>
-                        <p className="text-gray-700">{new Date(outreach.openedAt).toLocaleDateString()}</p>
+                        <p className="text-gray-700">{new Date(out.openedAt).toLocaleDateString()}</p>
                       </div>
                     )}
-                    
-                    <Link
-                      href={`/admin/outreach/${outreach.id}`}
-                      className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
-                    >
-                      View
-                    </Link>
                   </div>
                 </div>
               </div>

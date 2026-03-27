@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { sampleBusinesses } from '@/data/crm-data';
-import { Business } from '@/lib/crm-types';
+import { useCRM } from '@/context/CRMContext';
 
 const statusColors: Record<string, string> = {
   prospect: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -15,10 +14,12 @@ const statusColors: Record<string, string> = {
 };
 
 export default function BusinessesPage() {
+  const { businesses, deleteBusiness } = useCRM();
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   
-  const filteredBusinesses = sampleBusinesses.filter(business => {
+  const filteredBusinesses = businesses.filter(business => {
     const matchesFilter = filter === 'all' || business.status === filter;
     const matchesSearch = business.name.toLowerCase().includes(search.toLowerCase()) ||
       business.neighborhood.toLowerCase().includes(search.toLowerCase());
@@ -37,12 +38,17 @@ export default function BusinessesPage() {
     return icons[status] || '📍';
   };
 
+  const handleDelete = (id: string) => {
+    deleteBusiness(id);
+    setDeleteConfirm(null);
+  };
+
   return (
     <div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-primary font-display">Businesses</h1>
-          <p className="text-muted mt-1">{sampleBusinesses.length} businesses in your pipeline</p>
+          <p className="text-muted mt-1">{businesses.length} businesses in your pipeline</p>
         </div>
         <Link
           href="/admin/businesses/new"
@@ -132,9 +138,9 @@ export default function BusinessesPage() {
                       <Link
                         href={`/admin/businesses/${business.id}`}
                         className="p-2 text-gray-400 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
-                        title="View Details"
+                        title="Edit"
                       >
-                        <span>👁</span>
+                        <span>✏️</span>
                       </Link>
                       <Link
                         href={`/admin/outreach?business=${business.id}`}
@@ -143,6 +149,13 @@ export default function BusinessesPage() {
                       >
                         <span>📧</span>
                       </Link>
+                      <button
+                        onClick={() => setDeleteConfirm(business.id)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete"
+                      >
+                        <span>🗑️</span>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -158,6 +171,32 @@ export default function BusinessesPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-primary mb-2">Delete Business?</h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this business? This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirm)}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

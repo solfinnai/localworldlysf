@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { CRMProvider } from '@/context/CRMContext';
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '📊' },
@@ -88,7 +89,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        {children}
+        <CRMProvider>
+          {children}
+        </CRMProvider>
       </main>
     </div>
   );
