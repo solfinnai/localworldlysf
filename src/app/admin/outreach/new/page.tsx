@@ -3,60 +3,28 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { sampleBusinesses, INTERVIEW_QUESTIONS } from '@/data/crm-data';
+import { sampleBusinesses } from '@/data/crm-data';
+import { useCRM } from '@/context/CRMContext';
 import { Business } from '@/lib/crm-types';
 
 const OUTREACH_TEMPLATES = {
   'intro-email': {
     id: 'intro-email',
     name: 'Initial Outreach',
-    subject: 'We\'d love to feature {businessName} in LocalWorld Spotlight!',
-    body: `Hi {ownerName},
-
-I came across {businessName} and fell in love with what you&apos;re doing in San Francisco.
-
-LocalWorld Spotlight is a local media platform that tells the stories behind SF&apos;s best businesses. We&apos;re looking for incredible places like yours to feature.
-
-Would you be open to a quick chat? I&apos;d love to learn more about your story.
-
-Best,
-{senderName}`,
+    description: 'Introduce LocalWorld Spotlight to a new business',
+    transactionalId: process.env.NEXT_PUBLIC_LOOPS_INTRO_TEMPLATE_ID || '',
   },
   'interview-request': {
     id: 'interview-request',
     name: 'Interview Request',
-    subject: '5 quick questions about {businessName}',
-    body: `Hi {ownerName},
-
-Thanks for connecting! We&apos;d love to share {businessName}&apos;s story with our readers.
-
-We keep it simple - just 5 quick questions that you can answer whenever you have a moment. No pressure, no rush.
-
-Here&apos;s what we typically ask:
-1. Tell me about yourself and how {businessName} came to be
-2. What makes {businessName} different?
-3. A memorable customer moment?
-4. Hidden gems in the neighborhood?
-5. What should first-timers absolutely try?
-
-Would you be up for it?
-
-{senderName}`,
+    description: 'Send the 5-question interview request',
+    transactionalId: process.env.NEXT_PUBLIC_LOOPS_INTERVIEW_TEMPLATE_ID || '',
   },
   'follow-up': {
     id: 'follow-up',
     name: 'Follow Up',
-    subject: 'Checking in on {businessName}',
-    body: `Hi {ownerName},
-
-Just following up on my earlier message about featuring {businessName}.
-
-I know you&apos;re busy running an amazing business! Whenever you have a moment, I&apos;d love to connect.
-
-If now isn&apos;t a good time, just let me know and I&apos;ll check back later.
-
-Best,
-{senderName}`,
+    description: 'Follow up with businesses that haven\'t responded',
+    transactionalId: process.env.NEXT_PUBLIC_LOOPS_FOLLOWUP_TEMPLATE_ID || '',
   },
 };
 
@@ -68,17 +36,16 @@ const CHANNELS = [
 
 export default function NewOutreachPage() {
   const router = useRouter();
+  const { businesses, addOutreach } = useCRM();
   const [step, setStep] = useState(1);
   const [selectedBusinesses, setSelectedBusinesses] = useState<string[]>([]);
   const [channel, setChannel] = useState('email');
   const [template, setTemplate] = useState('intro-email');
-  const [customMessage, setCustomMessage] = useState(false);
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<{sent: number; mode: string} | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredBusinesses = sampleBusinesses.filter(b => 
+  const filteredBusinesses = businesses.filter(b => 
     b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     b.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
     b.neighborhood.toLowerCase().includes(searchQuery.toLowerCase())
@@ -100,21 +67,12 @@ export default function NewOutreachPage() {
 
   const handleTemplateChange = (templateId: string) => {
     setTemplate(templateId);
-    const tmpl = OUTREACH_TEMPLATES[templateId as keyof typeof OUTREACH_TEMPLATES];
-    setSubject(tmpl.subject);
-    setBody(tmpl.body);
-    setCustomMessage(false);
   };
 
   const handleNext = () => {
     if (step === 1) {
       setStep(2);
     } else if (step === 2) {
-      const tmpl = OUTREACH_TEMPLATES[template as keyof typeof OUTREACH_TEMPLATES];
-      if (!customMessage) {
-        setSubject(tmpl.subject);
-        setBody(tmpl.body);
-      }
       setStep(3);
     } else if (step === 3) {
       handleSend();
@@ -123,21 +81,54 @@ export default function NewOutreachPage() {
 
   const handleSend = async () => {
     setSending(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setSending(false);
-    router.push('/admin/outreach?sent=true');
-  };
+    
+    const tmpl = OUTREACH_TEMPLATES[template as keyof typeof OUTREACH_TEMPLATES];
+    const contacts = selectedBusinesses.map(id => {
+      const business = businesses.find(b => b.id === id);
+      return {
+        email: business?.email || '',
+        businessName: business?.name || '',
+      };
+    }).filter(c => c.email);
 
-  const previewMessage = (business: Business) => {
-    return {
-      subject: subject
-        .replace('{businessName}', business.name)
-        .replace('{ownerName}', 'there'),
-      body: body
-        .replace(/{businessName}/g, business.name)
-        .replace(/{ownerName}/g, 'there')
-        .replace('{senderName}', 'The LocalWorld Team'),
-    };
+    try {
+      const response = await fetch('/api/outreach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contacts,
+          transactionalId: tmpl.transactionalId,
+          channel,
+        }),
+      });
+
+      const result = await response.json();
+      setSendResult({ sent: result.sent || contacts.length, mode: result.mode || 'preview' });
+
+      if (result.mode === 'live') {
+        contacts.forEach((contact: any) => {
+          addOutreach({
+            businessId: businesses.find(b => b.email === contact.email)?.id || '',
+            channel: 'email' as const,
+            templateId: template,
+            status: 'sent',
+            scheduledAt: null,
+            sentAt: new Date().toISOString(),
+            openedAt: null,
+            repliedAt: null,
+            error: null,
+          });
+        });
+      }
+
+      setTimeout(() => {
+        router.push('/admin/outreach?sent=true');
+      }, 2000);
+    } catch (error) {
+      console.error('Send error:', error);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -249,46 +240,22 @@ export default function NewOutreachPage() {
                   }`}
                 >
                   <p className="font-medium text-primary">{tmpl.name}</p>
+                  <p className="text-sm text-gray-500 mt-1">{tmpl.description}</p>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-primary">Message</h2>
-              <button
-                onClick={() => setCustomMessage(!customMessage)}
-                className="text-sm text-primary hover:underline"
-              >
-                {customMessage ? 'Use Template' : 'Customize Message'}
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={(e) => { setSubject(e.target.value); setCustomMessage(true); }}
-                  disabled={!customMessage}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:bg-gray-50 disabled:text-gray-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Message Body</label>
-                <textarea
-                  value={body}
-                  onChange={(e) => { setBody(e.target.value); setCustomMessage(true); }}
-                  disabled={!customMessage}
-                  rows={10}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:bg-gray-50 disabled:text-gray-500 resize-none"
-                />
-              </div>
-              <p className="text-xs text-gray-500">
-                Use {'{businessName}'}, {'{ownerName}'}, {'{senderName}'} as placeholders
-              </p>
-            </div>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+            <p className="text-sm text-yellow-800">
+              <strong>Note:</strong> Email templates are managed in your Loops dashboard. 
+              Set the template IDs in your environment variables:
+            </p>
+            <code className="block mt-2 text-xs bg-yellow-100 p-2 rounded">
+              NEXT_PUBLIC_LOOPS_INTRO_TEMPLATE_ID<br/>
+              NEXT_PUBLIC_LOOPS_INTERVIEW_TEMPLATE_ID<br/>
+              NEXT_PUBLIC_LOOPS_FOLLOWUP_TEMPLATE_ID
+            </code>
           </div>
         </div>
       )}
@@ -312,17 +279,16 @@ export default function NewOutreachPage() {
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-4 border-b border-gray-100 bg-gray-50">
-              <h3 className="font-bold text-primary">Message Preview ({selectedBusinesses.length} recipients)</h3>
+              <h3 className="font-bold text-primary">Recipients ({selectedBusinesses.length})</h3>
             </div>
             <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
               {selectedBusinesses.map((id) => {
-                const business = sampleBusinesses.find(b => b.id === id);
+                const business = businesses.find(b => b.id === id);
                 if (!business) return null;
-                const preview = previewMessage(business);
                 return (
                   <div key={id} className="p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold">
                         {business.name.charAt(0)}
                       </div>
                       <div>
@@ -331,10 +297,6 @@ export default function NewOutreachPage() {
                           {channel === 'email' ? business.email : `@${business.social?.instagram?.split('/').pop() || business.name.toLowerCase().replace(/\s+/g, '')}`}
                         </p>
                       </div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-4 text-sm">
-                      <p className="font-medium text-gray-700 mb-2">{preview.subject}</p>
-                      <p className="text-gray-600 whitespace-pre-wrap">{preview.body}</p>
                     </div>
                   </div>
                 );
@@ -349,7 +311,8 @@ export default function NewOutreachPage() {
         {step > 1 ? (
           <button
             onClick={() => setStep(step - 1)}
-            className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+            disabled={sending}
+            className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
           >
             Back
           </button>
@@ -361,25 +324,37 @@ export default function NewOutreachPage() {
             Cancel
           </Link>
         )}
-        <button
-          onClick={handleNext}
-          disabled={(step === 1 && selectedBusinesses.length === 0) || sending}
-          className="px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {sending ? (
-            <>
-              <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Sending...
-            </>
-          ) : step === 3 ? (
-            <>
-              <span>📤</span>
-              Send Campaign
-            </>
-          ) : (
-            'Continue →'
-          )}
-        </button>
+        
+        {sendResult ? (
+          <div className="flex items-center gap-2 text-green-600">
+            <span className="text-xl">✓</span>
+            <span className="font-medium">
+              {sendResult.mode === 'live' 
+                ? `${sendResult.sent} emails sent!` 
+                : `Preview: ${sendResult.sent} emails ready (set LOOPS_API_KEY to send)`}
+            </span>
+          </div>
+        ) : (
+          <button
+            onClick={handleNext}
+            disabled={(step === 1 && selectedBusinesses.length === 0) || sending}
+            className="px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {sending ? (
+              <>
+                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Sending...
+              </>
+            ) : step === 3 ? (
+              <>
+                <span>📤</span>
+                Send Campaign
+              </>
+            ) : (
+              'Continue →'
+            )}
+          </button>
+        )}
       </div>
     </div>
   );
